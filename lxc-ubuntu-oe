@@ -75,10 +75,6 @@ EOF
         rm -f $rootfs/etc/init/tty{5,6}.conf
     fi
 
-    if [ -z "$bindhome" ]; then
-        chroot $rootfs useradd --create-home -s /bin/bash ubuntu
-        echo "ubuntu:ubuntu" | chroot $rootfs chpasswd
-    fi
 
     return 0
 }
@@ -89,6 +85,11 @@ EOF
 finalize_user()
 {
     user=$1
+
+    if [ -z "$bindhome" ]; then
+        chroot $rootfs useradd --create-home -s /bin/bash $user
+        echo "$user:$user" | chroot $rootfs chpasswd
+    fi
 
     sudo_version=$(chroot $rootfs dpkg-query -W -f='${Version}' sudo)
 
@@ -153,7 +154,7 @@ download_ubuntu()
     arch=$2
     release=$3
 
-    packages=vim,ssh
+    packages=vim,ssh,build-essential,git,gawk,diffstat,texi2html,texinfo,subversion,chrpath,wget,man-db,libc6-i386,language-pack-en
     echo "installing packages: $packages"
 
     # check the mini ubuntu was not already downloaded
@@ -494,6 +495,12 @@ post_process()
         chroot $rootfs apt-get install --force-yes -y --no-install-recommends upstart:${hostarch} mountall:${hostarch} iproute:${hostarch} isc-dhcp-client:${hostarch}
     fi
 
+	# Ubuntu 12.04 is supposed to make this, but it doesn't until
+	# the /etc/init.d/umountroot script runs at boot
+	if [ $release = "precise" ]; then
+		mkdir $rootfs/run/shm
+	fi
+
     # rmdir /dev/shm for containers that have /run/shm
     # I'm afraid of doing rm -rf $rootfs/dev/shm, in case it did
     # get bind mounted to the host's /run/shm.  So try to rmdir
@@ -503,6 +510,9 @@ post_process()
         [ -e "$rootfs/dev/shm" ] && mv $rootfs/dev/shm $rootfs/dev/shm.bak
         ln -s /run/shm $rootfs/dev/shm
     fi
+
+	# Use bash instead of dash
+	ln -sf bash $rootfs/bin/sh
 }
 
 do_bindhome()
@@ -574,6 +584,7 @@ if [ -f /etc/lsb-release ]; then
     fi
 fi
 
+user=build
 bindhome=
 arch=$(arch)
 
@@ -679,12 +690,12 @@ if [ -n "$bindhome" ]; then
     do_bindhome $rootfs $bindhome
     finalize_user $bindhome
 else
-    finalize_user ubuntu
+    finalize_user $user
 fi
 
 echo ""
 echo "##"
-echo "# The default user is 'ubuntu' with password 'ubuntu'!"
+echo "# The default user is '$user' with password '$user'!"
 echo "# Use the 'sudo' command to run tasks as root in the container."
 echo "##"
 echo ""
